@@ -91,15 +91,9 @@ const { jsPDF } = window.jspdf;
 let currentSession=null;
 let editIndex=null;
 
-/* =========================
-   IMPORTANT FIX: ID ONLY SYSTEM
-   - NEVER use DATE for matching
-   - ONLY use session.id
-   ========================= */
-
 function startInspection(){
   const name=nameVal(); const date=dateVal();
-  currentSession={id:Date.now(),name,date,rooms:[]}; // UNIQUE ID
+  currentSession={id:Date.now(),name,date,rooms:[]};
   show('inspection');
   document.getElementById('sessionTitle').innerText=`${name} - ${date}`;
 }
@@ -115,15 +109,12 @@ function saveRoom(){
 
 function finishInspection(){
   let all=JSON.parse(localStorage.getItem('inspections')||'[]');
-
-  // FIX: MATCH ONLY BY ID (NOT DATE)
   const index=all.findIndex(x=>x.id===currentSession.id);
   if(index>-1){
-    all[index]=currentSession; // update existing
+    all[index]=currentSession;
   } else {
-    all.push(currentSession); // new record
+    all.push(currentSession);
   }
-
   localStorage.setItem('inspections',JSON.stringify(all));
   loadHistory();
   show('home');
@@ -132,7 +123,6 @@ function finishInspection(){
 function loadHistory(){
   const el=document.getElementById('history'); el.innerHTML='';
   const data=JSON.parse(localStorage.getItem('inspections')||'[]');
-
   data.forEach(item=>{
     const div=document.createElement('div'); div.className='card';
     div.innerHTML=`<b>${item.name}</b><br>${item.date}<br>Rooms:${item.rooms.length}
@@ -150,10 +140,8 @@ function getAll(){return JSON.parse(localStorage.getItem('inspections')||'[]')}
 function openReport(id){
   const item=getAll().find(x=>x.id===id);
   currentSession=item;
-
   document.getElementById('reportTitle').innerText=`${item.name} - ${item.date}`;
   const c=document.getElementById('reportContent'); c.innerHTML='';
-
   item.rooms.forEach((r,i)=>{
     const d=document.createElement('div'); d.className='card';
     d.innerHTML=`<b>Room ${r.room}</b><br>
@@ -165,12 +153,10 @@ function openReport(id){
     <button onclick="editRoom(${i})">Edit</button>`;
     c.appendChild(d);
   });
-
   show('report');
 }
 
 function resume(id){
-  // FIX: resume by ID only
   currentSession=getAll().find(x=>x.id===id);
   show('inspection');
 }
@@ -197,11 +183,22 @@ function downloadPDF(){
   doc.setFontSize(14);
   doc.text(`${currentSession.name} - ${currentSession.date}`,148,10,{align:'center'});
 
+  // Passing explicit data objects with content set to spaces so text printing skips them entirely
   const rows=currentSession.rooms.map(r=>[
     r.room,
-    r.dnd ? 'YES' : 'NO', r.iron?'YES':'NO', r.ironBoard?'YES':'NO', r.remote?'YES':'NO', r.phone?'YES':'NO', r.hairDryer?'YES':'NO',
-    r.showerCurtain?'YES':'NO', r.clock?'YES':'NO', r.ac?'YES':'NO', r.fridge?'YES':'NO', r.bathroomFan?'YES':'NO', r.toilet?'YES':'NO',
-    r.pillowCount,r.bt,r.ht,r.ft,r.fm,r.notes||''
+    { content: ' ', status: r.dnd },
+    { content: ' ', status: r.iron },
+    { content: ' ', status: r.ironBoard },
+    { content: ' ', status: r.remote },
+    { content: ' ', status: r.phone },
+    { content: ' ', status: r.hairDryer },
+    { content: ' ', status: r.showerCurtain },
+    { content: ' ', status: r.clock },
+    { content: ' ', status: r.ac },
+    { content: ' ', status: r.fridge },
+    { content: ' ', status: r.bathroomFan },
+    { content: ' ', status: r.toilet },
+    r.pillowCount, r.bt, r.ht, r.ft, r.fm, r.notes||''
   ]);
 
   doc.autoTable({
@@ -210,10 +207,37 @@ function downloadPDF(){
     head:[["Room","DND","Iron","IB","Remote","Phone","HairDryer","ShowerCurtain","Clock","AC","Fridge","Fan","Toilet","Pillows","BT","HT","FT","FloorMat","Notes"]],
     body:rows,
     styles:{fontSize:8},
-    columnStyles:{18:{cellWidth:60}}
+    columnStyles:{18:{cellWidth:60}},
+    
+    // Check our custom structural status to draw clean vectors safely
+    didDrawCell: function(data) {
+      if (data.section === 'body' && data.cell.raw && data.cell.raw.status !== undefined) {
+        const isTrue = data.cell.raw.status;
+        
+        // Calculate the absolute center of the cell
+        const centerX = data.cell.x + (data.cell.width / 2);
+        const centerY = data.cell.y + (data.cell.height / 2);
+        
+        doc.setLineWidth(0.5);
+        
+        if (isTrue) {
+          // Draw Green Vector Checkmark
+          doc.setDrawColor(46, 204, 113); 
+          doc.line(centerX - 2, centerY, centerX - 0.5, centerY + 2);
+          doc.line(centerX - 0.5, centerY + 2, centerX + 2.5, centerY - 2.5);
+        } else {
+          // Draw Red Vector Cross Mark
+          doc.setDrawColor(231, 76, 60); 
+          doc.line(centerX - 2, centerY - 2, centerX + 2, centerY + 2);
+          doc.line(centerX + 2, centerY - 2, centerX - 2, centerY + 2);
+        }
+      }
+    }
   });
 
-  doc.save('inspection.pdf');
+  const safeName = (currentSession.name || 'Inspection').replace(/\s+/g, '_');
+  const safeDate = currentSession.date || new Date().toISOString().split('T')[0];
+  doc.save(`Inspection-${safeName}-${safeDate}.pdf`);
 }
 
 function show(id){['home','inspection','report'].forEach(x=>document.getElementById(x).classList.add('hidden'));document.getElementById(id).classList.remove('hidden');}
